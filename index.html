@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird - Special Fruits Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #1a1a2e;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 480px;
+            max-height: 800px;
+        }
+
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+    </div>
+    <script>
+const FRUIT_TYPES = {
+    gravity: { emoji: '🍎', name: 'Anti-Gravity', duration: 4000, color: '#8B008B', desc: 'Gravity is reversed!' },
+    speed: { emoji: '🍊', name: 'Speed Boost', duration: 3500, color: '#FF4500', desc: 'Move faster!' },
+    slow: { emoji: '🍋', name: 'Slow Motion', duration: 4000, color: '#9ACD32', desc: 'Pipes move slower!' },
+    invincible: { emoji: '🍇', name: 'Invincible', duration: 3000, color: '#FFD700', desc: 'Pass through pipes!' },
+    doubleScore: { emoji: '🍓', name: 'Double Points', duration: 5000, color: '#FF69B4', desc: 'Score double points!' },
+    magnet: { emoji: '🍑', name: 'Magnet', duration: 4500, color: '#40E0D0', desc: 'Attract fruits automatically!' },
+    shrink: { emoji: '🍒', name: 'Shrink', duration: 4000, color: '#FF6347', desc: 'Bird becomes smaller!' },
+    giant: { emoji: '🍉', name: 'Giant', duration: 4000, color: '#FF4500', desc: 'Bird becomes bigger!' },
+    freeze: { emoji: '🍈', name: 'Time Freeze', duration: 2500, color: '#87CEEB', desc: 'Pipes stop moving!' },
+    clone: { emoji: '🥝', name: 'Clone', duration: 6000, color: '#EE82EE', desc: 'Clone helps you score!' }
+};
+
+const DIFFICULTIES = {
+    easy: { name: 'Easy', gapSize: 200, pipeInterval: 2200, pipeSpeed: 2.5 },
+    normal: { name: 'Normal', gapSize: 160, pipeInterval: 1800, pipeSpeed: 3 },
+    hard: { name: 'Hard', gapSize: 130, pipeInterval: 1400, pipeSpeed: 3.8 }
+};
+
+const FRUIT_KEYS = Object.keys(FRUIT_TYPES);
+
+class Background {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.time = 0;
+
+        this.stars = [];
+        for (let i = 0; i < 80; i++) {
+            this.stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2 + 1,
+                twinkleSpeed: Math.random() * 0.02 + 0.01,
+                twinkleOffset: Math.random() * Math.PI * 2
+            });
+        }
+
+        this.clouds = [];
+        for (let i = 0; i < 8; i++) {
+            this.clouds.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height * 0.5,
+                width: Math.random() * 200 + 100,
+                height: Math.random() * 80 + 40,
+                speed: Math.random() * 0.3 + 0.1,
+                color: `hsla(${Math.random() * 60 + 280}, 70%, 60%, 0.15)`
+            });
+        }
+
+        this.decorations = [];
+        for (let i = 0; i < 15; i++) {
+            this.decorations.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 15 + 5,
+                speed: Math.random() * 0.5 + 0.2,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.02,
+                type: Math.floor(Math.random() * 3),
+                color: `hsla(${Math.random() * 360}, 80%, 70%, 0.3)`
+            });
+        }
+    }
+
+    update(deltaTime) {
+        this.time += deltaTime;
+
+        for (let cloud of this.clouds) {
+            cloud.x -= cloud.speed;
+            if (cloud.x + cloud.width < 0) {
+                cloud.x = this.canvas.width + cloud.width;
+                cloud.y = Math.random() * this.canvas.height * 0.5;
+            }
+        }
+
+        for (let deco of this.decorations) {
+            deco.x -= deco.speed;
+            deco.rotation += deco.rotationSpeed;
+            if (deco.x + deco.size < 0) {
+                deco.x = this.canvas.width + deco.size;
+                deco.y = Math.random() * this.canvas.height;
+            }
+        }
+    }
+
+    draw(activeAbilities) {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, h);
+        gradient.addColorStop(0, '#0f0c29');
+        gradient.addColorStop(0.3, '#302b63');
+        gradient.addColorStop(0.6, '#24243e');
+        gradient.addColorStop(1, '#1a1a2e');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, w, h);
+
+        this.drawGlowEffects();
+
+        for (let cloud of this.clouds) {
+            this.drawCloud(cloud);
+        }
+
+        for (let star of this.stars) {
+            const twinkle = Math.sin(this.time * star.twinkleSpeed + star.twinkleOffset) * 0.5 + 0.5;
+            ctx.beginPath();
+            ctx.arc(star.x, star.y, star.size * (0.5 + twinkle * 0.5), 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + twinkle * 0.7})`;
+            ctx.fill();
+        }
+
+        for (let deco of this.decorations) {
+            this.drawDecoration(deco);
+        }
+
+        if (activeAbilities.length > 0) {
+            this.drawAbilityTint(activeAbilities);
+        }
+    }
+
+    drawGlowEffects() {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        const glows = [
+            { x: w * 0.2, y: h * 0.2, r: 150, color: 'rgba(255, 100, 200, 0.1)' },
+            { x: w * 0.8, y: h * 0.3, r: 120, color: 'rgba(100, 150, 255, 0.1)' },
+            { x: w * 0.5, y: h * 0.7, r: 180, color: 'rgba(150, 255, 200, 0.08)' }
+        ];
+
+        for (let glow of glows) {
+            const pulse = Math.sin(this.time * 0.001 + glow.x) * 0.2 + 1;
+            const gradient = ctx.createRadialGradient(
+                glow.x, glow.y, 0,
+                glow.x, glow.y, glow.r * pulse
+            );
+            gradient.addColorStop(0, glow.color);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, w, h);
+        }
+    }
+
+    drawCloud(cloud) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.fillStyle = cloud.color;
+
+        const circles = [
+            { x: cloud.x, y: cloud.y, r: cloud.height * 0.5 },
+            { x: cloud.x + cloud.width * 0.25, y: cloud.y - cloud.height * 0.2, r: cloud.height * 0.4 },
+            { x: cloud.x + cloud.width * 0.5, y: cloud.y, r: cloud.height * 0.5 },
+            { x: cloud.x + cloud.width * 0.75, y: cloud.y - cloud.height * 0.1, r: cloud.height * 0.35 }
+        ];
+
+        for (let c of circles) {
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    drawDecoration(deco) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(deco.x, deco.y);
+        ctx.rotate(deco.rotation);
+        ctx.fillStyle = deco.color;
+        ctx.strokeStyle = deco.color;
+        ctx.lineWidth = 2;
+
+        if (deco.type === 0) {
+            ctx.beginPath();
+            ctx.moveTo(0, -deco.size);
+            ctx.lineTo(-deco.size * 0.866, deco.size * 0.5);
+            ctx.lineTo(deco.size * 0.866, deco.size * 0.5);
+            ctx.closePath();
+            ctx.stroke();
+        } else if (deco.type === 1) {
+            ctx.beginPath();
+            ctx.arc(0, 0, deco.size * 0.5, 0, Math.PI * 2);
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(0, -deco.size);
+            ctx.lineTo(deco.size * 0.6, 0);
+            ctx.lineTo(0, deco.size);
+            ctx.lineTo(-deco.size * 0.6, 0);
+            ctx.closePath();
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    drawAbilityTint(activeAbilities) {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        const tints = {
+            gravity: 'rgba(180, 100, 255, 0.1)',
+            speed: 'rgba(255, 100, 100, 0.1)',
+            slow: 'rgba(100, 150, 255, 0.1)',
+            invincible: 'rgba(255, 215, 0, 0.12)',
+            doubleScore: 'rgba(255, 105, 180, 0.1)',
+            magnet: 'rgba(100, 255, 200, 0.1)',
+            shrink: 'rgba(255, 165, 0, 0.1)',
+            giant: 'rgba(255, 69, 0, 0.1)',
+            freeze: 'rgba(135, 206, 235, 0.12)',
+            clone: 'rgba(238, 130, 238, 0.1)'
+        };
+
+        for (let ability of activeAbilities) {
+            if (tints[ability.type]) {
+                ctx.fillStyle = tints[ability.type];
+                ctx.fillRect(0, 0, w, h);
+            }
+        }
+    }
+}
+
+class Bird {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.reset();
+    }
+
+    reset() {
+        this.x = this.canvas.width * 0.25;
+        this.y = this.canvas.height / 2;
+        this.velocity = 0;
+        this.gravity = 0.4;
+        this.flapStrength = -9;
+        this.rotation = 0;
+        this.baseSize = 30;
+        this.size = this.baseSize;
+        this.isInvincible = false;
+        this.hasMagnet = false;
+        this.flapAnimation = 0;
+        this.trail = [];
+    }
+
+    flap(isAntiGravity = false) {
+        if (isAntiGravity) {
+            this.velocity = -this.flapStrength * 0.7; // 向下飞
+        } else {
+            this.velocity = this.flapStrength; // 向上飞
+        }
+    }
+
+    update(deltaTime, abilities) {
+        this.flapAnimation += 0.2;
+
+        let currentGravity = this.gravity;
+        let currentFlapStrength = this.flapStrength;
+
+        if (abilities.has('gravity')) {
+            currentGravity = -this.gravity * 0.7; // 减轻反重力
+        }
+
+        this.velocity += currentGravity;
+        this.y += this.velocity;
+
+        if (abilities.has('shrink')) {
+            this.size = this.baseSize * 0.5;
+        } else if (abilities.has('giant')) {
+            this.size = this.baseSize * 1.8;
+        } else {
+            this.size = this.baseSize;
+        }
+
+        this.isInvincible = abilities.has('invincible');
+        this.hasMagnet = abilities.has('magnet');
+
+        const targetRotation = Math.min(Math.max(this.velocity * 3, -30), 45);
+        this.rotation += (targetRotation - this.rotation) * 0.1;
+
+        this.trail.unshift({ x: this.x, y: this.y, alpha: 1 });
+        if (this.trail.length > 10) this.trail.pop();
+        for (let t of this.trail) {
+            t.alpha -= 0.1;
+        }
+    }
+
+    getBounds() {
+        const half = this.size / 2;
+        return {
+            x: this.x - half * 0.7, y: this.y - half * 0.7, width: this.size * 0.7, height: this.size * 0.7
+        };
+    }
+
+    draw() {
+        const ctx = this.ctx;
+
+        for (let i = this.trail.length - 1; i >= 0; i--) {
+            const t = this.trail[i];
+            if (t.alpha > 0) {
+                ctx.save();
+                ctx.translate(t.x, t.y);
+                ctx.globalAlpha = t.alpha * 0.3;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 200, 100, 0.5)';
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation * Math.PI / 180);
+
+        const wingOffset = Math.sin(this.flapAnimation) * 3;
+
+        if (this.isInvincible) {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.size * 0.8, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + Math.sin(Date.now() * 0.01) * 0.3})`;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
+
+        const bodyGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 0.5);
+        bodyGradient.addColorStop(0, '#FFD700');
+        bodyGradient.addColorStop(0.5, '#FFA500');
+        bodyGradient.addColorStop(1, '#FF8C00');
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = bodyGradient;
+        ctx.fill();
+        ctx.strokeStyle = '#CC7000';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = '#FFE4B5';
+        ctx.beginPath();
+        ctx.ellipse(-this.size * 0.3, wingOffset, this.size * 0.3, this.size * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(this.size * 0.25, -this.size * 0.1, this.size * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#FF6347';
+        ctx.beginPath();
+        ctx.moveTo(this.size * 0.35, 0);
+        ctx.lineTo(this.size * 0.6, this.size * 0.05);
+        ctx.lineTo(this.size * 0.35, this.size * 0.15);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+class BirdClone {
+    constructor(canvas, x, y) {
+        this.canvas = canvas; this.ctx = canvas.getContext('2d');
+        this.x = x; this.y = y; this.baseY = y;
+        this.time = Math.random() * Math.PI * 2; this.size = 20;
+        this.lifetime = 0; this.maxLifetime = 6000;
+    }
+
+    update(deltaTime, mainBirdY) {
+        this.time += deltaTime * 0.005;
+        this.y = this.baseY + Math.sin(this.time) * 30;
+        this.lifetime += deltaTime;
+        return this.lifetime < this.maxLifetime;
+    }
+
+    draw() {
+        const ctx = this.ctx;
+        const alpha = 1 - (this.lifetime / this.maxLifetime);
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.translate(this.x, this.y);
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#EE82EE';
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+class Pipe {
+    constructor(x, canvasHeight, gapY = null, gapSize = 160) {
+        this.x = x; this.width = 70; this.gapSize = gapSize;
+        this.gapY = gapY || Math.random() * (canvasHeight - this.gapSize - 200) + 100;
+        this.scored = false; this.canvasHeight = canvasHeight;
+        this.colors = {
+            top: this.generateGradient('top'),
+            bottom: this.generateGradient('bottom')
+        };
+    }
+
+    generateGradient(position) {
+        const hue = Math.random() * 60 + 200;
+        return { light: `hsl(${hue}, 70%, 50%)`, dark: `hsl(${hue}, 70%, 35%)` };
+    }
+
+    update(speed, isFrozen) {
+        if (!isFrozen) this.x -= speed;
+    }
+
+    isOffScreen() { return this.x + this.width < 0; }
+    getTopBounds() { return { x: this.x, y: 0, width: this.width, height: this.gapY }; }
+    getBottomBounds() { return { x: this.x, y: this.gapY + this.gapSize, width: this.width, height: this.canvasHeight - this.gapY - this.gapSize }; }
+
+    draw(ctx, isFrozen) {
+        if (isFrozen) ctx.globalAlpha = 0.7;
+        this.drawPipe(ctx, this.x, 0, this.width, this.gapY, this.colors.top, true);
+        this.drawPipe(ctx, this.x, this.gapY + this.gapSize, this.width, this.canvasHeight - this.gapY - this.gapSize, this.colors.bottom, false);
+        ctx.globalAlpha = 1;
+    }
+
+    drawPipe(ctx, x, y, w, h, colors, isTop) {
+        const capHeight = 30; const capWidth = w + 10; const capX = x - 5;
+        const pipeGradient = ctx.createLinearGradient(x, 0, x + w, 0);
+        pipeGradient.addColorStop(0, colors.dark);
+        pipeGradient.addColorStop(0.3, colors.light);
+        pipeGradient.addColorStop(0.7, colors.light);
+        pipeGradient.addColorStop(1, colors.dark);
+        ctx.fillStyle = pipeGradient; ctx.fillRect(x, y, w, h);
+        let capY = isTop ? y + h - capHeight : y;
+        const capGradient = ctx.createLinearGradient(capX, 0, capX + capWidth, 0);
+        capGradient.addColorStop(0, colors.dark); capGradient.addColorStop(0.5, colors.light); capGradient.addColorStop(1, colors.dark);
+        ctx.fillStyle = capGradient; ctx.fillRect(capX, capY, capWidth, capHeight);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 2;
+        ctx.strokeRect(capX + 5, capY + 5, capWidth - 10, capHeight - 10);
+    }
+}
+
+class PipeManager {
+    constructor(canvas) {
+        this.canvas = canvas; this.pipes = []; this.lastPipeTime = 0;
+        this.difficulty = DIFFICULTIES.normal;
+    }
+
+    reset(difficulty = DIFFICULTIES.normal) {
+        this.pipes = []; this.lastPipeTime = 0; this.difficulty = difficulty;
+    }
+
+    update(deltaTime, abilities) {
+        let currentSpeed = this.difficulty.pipeSpeed;
+        if (abilities.has('speed')) currentSpeed *= 1.5;
+        if (abilities.has('slow')) currentSpeed *= 0.5;
+        const isFrozen = abilities.has('freeze');
+        this.lastPipeTime += deltaTime;
+        if (this.lastPipeTime > this.difficulty.pipeInterval && !isFrozen) {
+            this.pipes.push(new Pipe(this.canvas.width, this.canvas.height, null, this.difficulty.gapSize));
+            this.lastPipeTime = 0;
+        }
+        for (let i = this.pipes.length - 1; i >= 0; i--) {
+            this.pipes[i].update(currentSpeed, isFrozen);
+            if (this.pipes[i].isOffScreen()) {
+                this.pipes.splice(i, 1);
+            }
+        }
+    }
+
+    checkCollision(birdBounds, isInvincible) {
+        if (isInvincible) return false;
+        for (let pipe of this.pipes) {
+            const top = pipe.getTopBounds(); const bottom = pipe.getBottomBounds();
+            if (this.rectIntersect(birdBounds, top) || this.rectIntersect(birdBounds, bottom)) { return true; }
+        }
+        return false;
+    }
+
+    checkScoring(birdX) {
+        let score = 0;
+        for (let pipe of this.pipes) {
+            if (!pipe.scored && pipe.x + pipe.width < birdX) {
+                pipe.scored = true; score = 1;
+            }
+        }
+        return score;
+    }
+
+    rectIntersect(a, b) {
+        return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    }
+
+    draw(ctx, isFrozen) {
+        for (let pipe of this.pipes) pipe.draw(ctx, isFrozen);
+    }
+}
+
+class Fruit {
+    constructor(x, y, type = null) {
+        this.x = x; this.y = y;
+        this.type = type || FRUIT_KEYS[Math.floor(Math.random() * FRUIT_KEYS.length)];
+        this.size = 35; this.collected = false;
+        this.bobOffset = Math.random() * Math.PI * 2; this.bobTime = 0; this.particles = [];
+    }
+
+    update(deltaTime, birdX, birdY, hasMagnet) {
+        this.bobTime += deltaTime;
+        if (hasMagnet) {
+            const dx = birdX - this.x; const dy = birdY - this.y; const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 200) { this.x += dx * 0.05; this.y += dy * 0.05; }
+        }
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            this.particles[i].life -= deltaTime; this.particles[i].y += this.particles[i].vy;
+            if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+        }
+    }
+
+    collect() {
+        this.collected = true;
+        for (let i = 0; i < 12; i++) {
+            const angle = (Math.PI * 2 / 12) * i;
+            this.particles.push({
+                x: this.x, y: this.y, vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
+                life: 500, color: FRUIT_TYPES[this.type].color
+            });
+        }
+    }
+
+    getBounds() { return { x: this.x - this.size / 2, y: this.y - this.size / 2, width: this.size, height: this.size }; }
+    draw(ctx) {
+        const bob = Math.sin(this.bobTime * 0.005 + this.bobOffset) * 5;
+        const y = this.y + bob;
+        if (!this.collected) {
+            const glowGradient = ctx.createRadialGradient(this.x, y, 0, this.x, y, this.size);
+            glowGradient.addColorStop(0, FRUIT_TYPES[this.type].color + '60');
+            glowGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGradient; ctx.fillRect(this.x - this.size, y - this.size, this.size * 2, this.size * 2);
+            ctx.font = `${this.size}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(FRUIT_TYPES[this.type].emoji, this.x, y);
+        }
+        for (let p of this.particles) {
+            ctx.beginPath(); ctx.arc(p.x, p.y, 5 * (p.life / 500), 0, Math.PI * 2);
+            ctx.fillStyle = p.color; ctx.fill();
+        }
+    }
+}
+
+class FruitManager {
+    constructor(canvas) {
+        this.canvas = canvas; this.fruits = []; this.fruitInterval = 2500; this.lastFruitTime = 0; this.spawnAllTypes = false;
+    }
+
+    reset(spawnAllTypes = false) {
+        this.fruits = []; this.lastFruitTime = 0; this.spawnAllTypes = spawnAllTypes;
+    }
+
+    update(deltaTime, birdX, birdY, hasMagnet) {
+        this.lastFruitTime += deltaTime;
+        if (this.lastFruitTime > (this.spawnAllTypes ? 1200 : 2500) && this.fruits.length < (this.spawnAllTypes ? 5 : 3)) {
+            const x = this.canvas.width + 50;
+            const y = Math.random() * (this.canvas.height - 200) + 100;
+            let type = null;
+            if (this.spawnAllTypes) {
+                const currentTypes = this.fruits.filter(f => !f.collected).map(f => f.type);
+                const availableTypes = FRUIT_KEYS.filter(k => !currentTypes.includes(k));
+                if (availableTypes.length > 0) type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+            }
+            this.fruits.push(new Fruit(x, y, type));
+            this.lastFruitTime = 0;
+        }
+        for (let i = this.fruits.length - 1; i >= 0; i--) {
+            const fruit = this.fruits[i]; fruit.update(deltaTime, birdX, birdY, hasMagnet);
+            if (!fruit.collected) fruit.x -= 2;
+            if (fruit.collected && fruit.particles.length === 0) {
+                this.fruits.splice(i, 1);
+            } else if (fruit.x < -100 && !fruit.collected) {
+                this.fruits.splice(i, 1);
+            }
+        }
+    }
+
+    checkCollection(birdBounds) {
+        for (let fruit of this.fruits) {
+            if (!fruit.collected) {
+                const fruitBounds = fruit.getBounds();
+                if (this.rectIntersect(birdBounds, fruitBounds)) { fruit.collect(); return fruit.type; }
+            }
+        }
+        return null;
+    }
+
+    rectIntersect(a, b) { return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y; }
+    draw(ctx) { for (let fruit of this.fruits) fruit.draw(ctx); }
+}
+
+class AbilityManager {
+    constructor() { this.abilities = new Map(); }
+    reset() { this.abilities.clear(); }
+    addAbility(type) {
+        const config = FRUIT_TYPES[type];
+        if (this.abilities.has(type)) this.abilities.get(type).remaining = config.duration;
+        else this.abilities.set(type, { remaining: config.duration, max: config.duration });
+    }
+    update(deltaTime) {
+        for (let [type, data] of this.abilities) {
+            data.remaining -= deltaTime;
+            if (data.remaining <= 0) this.abilities.delete(type);
+        }
+    }
+    has(type) { return this.abilities.has(type); }
+    getActiveAbilities() {
+        const result = [];
+        for (let [type, data] of this.abilities) result.push({ type, remaining: data.remaining, max: data.max });
+        return result;
+    }
+    shouldDoubleScore() { return this.has('doubleScore'); }
+    isFrozen() { return this.has('freeze'); }
+}
+
+class UI {
+    constructor(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.buttons = []; }
+    clearButtons() { this.buttons = []; }
+    addButton(x, y, width, height, text, color, callback) { this.buttons.push({ x, y, width, height, text, color, callback }); }
+    handleClick(mouseX, mouseY) {
+        for (let btn of this.buttons) {
+            if (mouseX >= btn.x && mouseX <= btn.x + btn.width &&
+                mouseY >= btn.y && mouseY <= btn.y + btn.height) {
+                if (btn.callback) btn.callback();
+                return true;
+            }
+        }
+        return false;
+    }
+    drawScore(score) {
+        const ctx = this.ctx; ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'; ctx.shadowBlur = 10; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 2;
+        ctx.font = 'bold 64px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        const gradient = ctx.createLinearGradient(0, 40, 0, 100); gradient.addColorStop(0, '#FFD700'); gradient.addColorStop(1, '#FFA500');
+        ctx.fillStyle = gradient; ctx.fillText(score.toString(), this.canvas.width / 2, 40);
+        ctx.restore();
+    }
+
+    drawAbilityIndicators(activeAbilities) {
+        const ctx = this.ctx; const startY = 120; const spacing = 50;
+        activeAbilities.forEach((ability, index) => {
+            const y = startY + index * spacing; this.drawAbilityBar(ability, 20, y);
+        });
+    }
+
+    drawAbilityBar(ability, x, y) {
+        const ctx = this.ctx; const config = FRUIT_TYPES[ability.type];
+        const width = 140; const height = 36; const progress = ability.remaining / ability.max;
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.beginPath(); ctx.roundRect(x, y, width, height, 8); ctx.fill();
+        ctx.fillStyle = config.color + '80'; ctx.beginPath(); ctx.roundRect(x + 2, y + 2, (width - 4) * progress, height - 4, 6); ctx.fill();
+        ctx.font = '24px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(config.emoji, x + 8, y + height / 2);
+        ctx.font = '14px Arial'; ctx.fillStyle = 'white'; ctx.fillText(config.name, x + 40, y + height / 2);
+        ctx.restore();
+    }
+
+    drawButton(btn) {
+        const ctx = this.ctx; ctx.save();
+        ctx.fillStyle = btn.color; ctx.beginPath(); ctx.roundRect(btn.x, btn.y, btn.width, btn.height, 10); ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'white';
+        ctx.fillText(btn.text, btn.x + btn.width / 2, btn.y + btn.height / 2);
+        ctx.restore();
+    }
+
+    drawMenuScreen(selectedDifficulty, highScores) {
+        const ctx = this.ctx; const w = this.canvas.width; const h = this.canvas.height;
+        ctx.save(); ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fillRect(0, 0, w, h);
+        ctx.font = 'bold 44px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const titleGradient = ctx.createLinearGradient(w / 2 - 100, h / 2 - 50, w / 2 + 100, h / 2 + 50);
+        titleGradient.addColorStop(0, '#FF6B6B'); titleGradient.addColorStop(0.5, '#FFD93D'); titleGradient.addColorStop(1, '#6BCB77');
+        ctx.fillStyle = titleGradient; ctx.fillText('🐦 Flappy Bird', w / 2, 50);
+        ctx.font = '20px Arial'; ctx.fillStyle = '#FFD700'; ctx.fillText('🍎 Special Fruits Edition 🍊', w / 2, 80);
+        ctx.font = 'bold 22px Arial'; ctx.fillStyle = '#FFFFFF'; ctx.fillText('Select Difficulty', w / 2, 115);
+        const btnWidth = 130; const btnHeight = 50; const btnSpacing = 20; const totalWidth = btnWidth * 3 + btnSpacing * 2; const startX = (w - totalWidth) / 2;
+        const difficulties = [
+            { key: 'easy', name: 'Easy', color: '#4CAF50' },
+            { key: 'normal', name: 'Normal', color: '#2196F3' },
+            { key: 'hard', name: 'Hard', color: '#f44336' }
+        ];
+        this.clearButtons();
+        difficulties.forEach((diff, i) => {
+            const x = startX + i * (btnWidth + btnSpacing); const y = 135; const isSelected = selectedDifficulty === diff.key;
+            this.addButton(x, y, btnWidth, btnHeight, diff.name, isSelected ? diff.color : diff.color + '80', null);
+        });
+        this.buttons.forEach(btn => this.drawButton(btn));
+        ctx.font = '16px Arial'; ctx.fillStyle = '#AAAAAA'; difficulties.forEach((diff, i) => {
+            const x = startX + i * (btnWidth + btnSpacing) + btnWidth / 2; const y = 200; ctx.textAlign = 'center';
+            ctx.fillText(`🏆 ${highScores[diff.key] || 0}`, x, y);
+        });
+        ctx.font = 'bold 18px Arial'; ctx.fillStyle = '#6BCB77'; ctx.fillText('🍌 All Fruits 🍓', w / 2, 225);
+        const fruits = Object.entries(FRUIT_TYPES); const cols = 1; const startY = 245; const rowHeight = 24;
+        fruits.forEach(([key, config], i) => {
+            const row = i; const x = w / 2; const y = startY + row * rowHeight;
+            ctx.textAlign = 'center'; ctx.font = '13px Arial'; ctx.fillStyle = 'white';
+            ctx.fillText(`${config.emoji} ${config.name}: ${config.desc}`, x, y);
+        });
+        const playY = h - 120; const practiceY = h - 60;
+        this.addButton(w / 2 - 100, playY, 200, 50, '🎮 Start Game', '#4ECDC4', null);
+        this.addButton(w / 2 - 100, practiceY, 200, 50, '🎯 Practice Mode', '#9C27B0', null);
+        this.drawButton(this.buttons[this.buttons.length - 2]); this.drawButton(this.buttons[this.buttons.length - 1]);
+        ctx.restore();
+    }
+
+    drawPracticeScreen() {
+        const ctx = this.ctx; const w = this.canvas.width; const h = this.canvas.height;
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.beginPath(); ctx.roundRect(w / 2 - 150, 10, 300, 40, 10); ctx.fill();
+        ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#4ECDC4';
+        ctx.fillText('🎯 Practice Mode - No Dying!', w / 2, 30);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.beginPath(); ctx.roundRect(w / 2 - 100, h - 60, 200, 45, 10); ctx.fill();
+        ctx.font = 'bold 18px Arial'; ctx.fillStyle = '#FF6B6B'; ctx.fillText('← Back to Menu', w / 2, h - 38);
+        ctx.restore();
+    }
+
+    drawGameOverScreen(score, highScore, difficultyName) {
+        const ctx = this.ctx; const w = this.canvas.width; const h = this.canvas.height;
+        ctx.save(); ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(0, 0, w, h);
+        ctx.font = 'bold 52px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#FF6B6B';
+        ctx.fillText('Game Over!', w / 2, h / 2 - 110);
+        ctx.font = '18px Arial'; ctx.fillStyle = '#AAAAAA'; ctx.fillText(`Difficulty: ${difficultyName}`, w / 2, h / 2 - 75);
+        ctx.font = '32px Arial'; ctx.fillStyle = 'white'; ctx.fillText(`Score: ${score}`, w / 2, h / 2 - 30);
+        if (score >= highScore && score > 0) { ctx.font = '24px Arial'; ctx.fillStyle = '#FFD700'; ctx.fillText('🎉 New Record! 🎉', w / 2, h / 2 + 15); }
+        ctx.font = '20px Arial'; ctx.fillStyle = '#AAA'; ctx.fillText(`High Score: ${highScore}`, w / 2, h / 2 + 50);
+        this.clearButtons();
+        const btnWidth = 180; const btnHeight = 50; const btnSpacing = 15; const startX = (w - btnWidth * 2 - btnSpacing) / 2;
+        this.addButton(startX, h - 85, btnWidth, btnHeight, 'Play Again', '#4ECDC4', null);
+        this.addButton(startX + btnWidth + btnSpacing, h - 85, btnWidth, btnHeight, 'Menu', '#9C27B0', null);
+        this.drawButton(this.buttons[0]); this.drawButton(this.buttons[1]);
+        ctx.font = '16px Arial'; ctx.fillStyle = '#888'; ctx.fillText('Press SPACE to play again', w / 2, h - 25);
+        ctx.restore();
+    }
+}
+
+const GAME_STATE = { MENU: 'menu', PLAYING: 'playing', PRACTICE: 'practice', GAME_OVER: 'game_over' };
+
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('game-canvas'); this.setupCanvas();
+        this.state = GAME_STATE.MENU; this.score = 0; this.highScores = this.loadHighScores();
+        this.selectedDifficulty = 'normal';
+        this.background = new Background(this.canvas); this.bird = new Bird(this.canvas);
+        this.pipeManager = new PipeManager(this.canvas); this.fruitManager = new FruitManager(this.canvas);
+        this.abilityManager = new AbilityManager(); this.ui = new UI(this.canvas); this.clones = [];
+        this.lastTime = 0; this.setupEventListeners(); this.gameLoop(0);
+    }
+
+    loadHighScores() {
+        const saved = localStorage.getItem('flappyHighScores');
+        if (saved) return JSON.parse(saved);
+        return { easy: 0, normal: 0, hard: 0 };
+    }
+
+    saveHighScore(difficulty, score) {
+        if (score > this.highScores[difficulty]) {
+            this.highScores[difficulty] = score;
+            localStorage.setItem('flappyHighScores', JSON.stringify(this.highScores));
+        }
+    }
+
+    setupCanvas() {
+        const container = document.getElementById('game-container');
+        this.canvas.width = Math.min(480, window.innerWidth);
+        this.canvas.height = Math.min(800, window.innerHeight);
+        window.addEventListener('resize', () => {
+            this.canvas.width = Math.min(480, window.innerWidth);
+            this.canvas.height = Math.min(800, window.innerHeight);
+        });
+    }
+
+    getMousePos(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    }
+
+    setupEventListeners() {
+        const handleInput = (e) => {
+            e.preventDefault(); const pos = this.getMousePos(e);
+            if (this.state === GAME_STATE.MENU) {
+                const btnWidth = 130; const btnHeight = 50; const btnSpacing = 20; const totalWidth = btnWidth * 3 + btnSpacing * 2;
+                const startX = (this.canvas.width - totalWidth) / 2;
+                const difficulties = ['easy', 'normal', 'hard'];
+                for (let i = 0; i < 3; i++) {
+                    const x = startX + i * (btnWidth + btnSpacing); const y = 135;
+                    if (pos.x >= x && pos.x <= x + btnWidth && pos.y >= y && pos.y <= y + btnHeight) {
+                        this.selectedDifficulty = difficulties[i]; return;
+                    }
+                }
+                const playBtnY = this.canvas.height - 120; const practiceBtnY = this.canvas.height - 60;
+                const btnX = this.canvas.width / 2 - 100; const btnW = 200; const btnH = 50;
+                if (pos.x >= btnX && pos.x <= btnX + btnW && pos.y >= playBtnY && pos.y <= playBtnY + btnH) {
+                    this.startGame(false); return;
+                }
+                if (pos.x >= btnX && pos.x <= btnX + btnW && pos.y >= practiceBtnY && pos.y <= practiceBtnY + btnH) {
+                    this.startGame(true); return;
+                }
+            } else if (this.state === GAME_STATE.PLAYING || this.state === GAME_STATE.PRACTICE) {
+                if (this.state === GAME_STATE.PRACTICE) {
+                    const backBtnY = this.canvas.height - 60; const backBtnX = this.canvas.width / 2 - 100;
+                    if (pos.x >= backBtnX && pos.x <= backBtnX + 200 && pos.y >= backBtnY && pos.y <= backBtnY + 45) {
+                        this.state = GAME_STATE.MENU; return;
+                    }
+                }
+                this.bird.flap(this.abilityManager.has('gravity'));
+            } else if (this.state === GAME_STATE.GAME_OVER) {
+                const btnWidth = 180; const btnHeight = 50; const btnSpacing = 15;
+                const startX = (this.canvas.width - btnWidth * 2 - btnSpacing) / 2;
+                if (pos.x >= startX && pos.x <= startX + btnWidth && pos.y >= this.canvas.height - 85 && pos.y <= this.canvas.height - 35) {
+                    this.startGame(false); return;
+                }
+                if (pos.x >= startX + btnWidth + btnSpacing && pos.x <= startX + btnWidth * 2 + btnSpacing && pos.y >= this.canvas.height - 85 && pos.y <= this.canvas.height - 35) {
+                    this.state = GAME_STATE.MENU; return;
+                }
+            }
+        };
+
+        this.canvas.addEventListener('click', handleInput);
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('click', { clientX: touch.clientX, clientY: touch.clientY });
+            this.canvas.dispatchEvent(mouseEvent);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (this.state === GAME_STATE.GAME_OVER) {
+                    this.startGame(false);
+                } else if (this.state === GAME_STATE.PLAYING || this.state === GAME_STATE.PRACTICE) {
+                    this.bird.flap(this.abilityManager.has('gravity'));
+                }
+            }
+        });
+    }
+
+    startGame(isPractice) {
+        this.state = isPractice ? GAME_STATE.PRACTICE : GAME_STATE.PLAYING;
+        this.score = 0; this.bird.reset();
+        this.pipeManager.reset(DIFFICULTIES[this.selectedDifficulty]);
+        this.fruitManager.reset(isPractice); this.abilityManager.reset(); this.clones = [];
+    }
+
+    gameOver() {
+        this.state = GAME_STATE.GAME_OVER;
+        this.saveHighScore(this.selectedDifficulty, this.score);
+    }
+
+    resetPractice() {
+        this.score = 0; this.bird.reset();
+        this.pipeManager.reset(DIFFICULTIES[this.selectedDifficulty]);
+        this.fruitManager.reset(true); this.abilityManager.reset(); this.clones = [];
+    }
+
+    update(deltaTime) {
+        this.background.update(deltaTime);
+        if (this.state === GAME_STATE.PLAYING || this.state === GAME_STATE.PRACTICE) {
+            const abilities = this.abilityManager; const isPractice = this.state === GAME_STATE.PRACTICE;
+            this.bird.update(deltaTime, abilities);
+            let hitSomething = false;
+            if (this.bird.y > this.canvas.height || this.bird.y < 0) {
+                if (this.bird.y > this.canvas.height && abilities.has('gravity')) {
+                } else if (!abilities.has('invincible')) {
+                    if (isPractice) hitSomething = true;
+                    else this.gameOver();
+                } else if (isPractice && abilities.has('invincible')) {
+                    if (this.bird.y > this.canvas.height) this.bird.y = this.canvas.height - 30;
+                    if (this.bird.y < 0) this.bird.y = 30;
+                    this.bird.velocity = 0;
+                }
+            }
+            this.pipeManager.update(deltaTime, abilities);
+            const birdBounds = this.bird.getBounds();
+            const hitPipe = this.pipeManager.checkCollision(birdBounds, abilities.has('invincible'));
+            if (hitPipe && !isPractice) {
+                this.gameOver();
+            } else if (hitPipe && isPractice) {
+                hitSomething = true;
+            }
+            let scoreGain = this.pipeManager.checkScoring(this.bird.x);
+            if (scoreGain > 0) {
+                if (abilities.shouldDoubleScore()) scoreGain *= 2;
+                this.score += scoreGain;
+            }
+            this.fruitManager.update(deltaTime, this.bird.x, this.bird.y, abilities.has('magnet'));
+            const collectedType = this.fruitManager.checkCollection(birdBounds);
+            if (collectedType) {
+                this.abilityManager.addAbility(collectedType);
+                if (collectedType === 'clone') {
+                    this.clones.push(new BirdClone(this.canvas, this.bird.x - 60, this.bird.y));
+                }
+            }
+            this.abilityManager.update(deltaTime);
+            for (let i = this.clones.length - 1; i >= 0; i--) {
+                if (!this.clones[i].update(deltaTime, this.bird.y)) {
+                    this.clones.splice(i, 1);
+                } else {
+                    const cloneScore = this.pipeManager.checkScoring(this.clones[i].x);
+                    if (cloneScore > 0) this.score += cloneScore;
+                }
+            }
+            if (hitSomething) {
+                this.resetPractice();
+            }
+        }
+    }
+
+    draw() {
+        const activeAbilities = this.abilityManager.getActiveAbilities();
+        this.background.draw(activeAbilities);
+        if (this.state === GAME_STATE.PLAYING || this.state === GAME_STATE.PRACTICE) {
+            this.pipeManager.draw(this.background.ctx, this.abilityManager.isFrozen());
+            this.fruitManager.draw(this.background.ctx);
+            for (let clone of this.clones) clone.draw();
+            this.bird.draw();
+            this.ui.drawScore(this.score);
+            this.ui.drawAbilityIndicators(activeAbilities);
+            if (this.state === GAME_STATE.PRACTICE) this.ui.drawPracticeScreen();
+        } else if (this.state === GAME_STATE.MENU) {
+            this.ui.drawMenuScreen(this.selectedDifficulty, this.highScores);
+        } else if (this.state === GAME_STATE.GAME_OVER) {
+            this.pipeManager.draw(this.background.ctx, false);
+            this.bird.draw();
+            this.ui.drawGameOverScreen(
+                this.score, this.highScores[this.selectedDifficulty], DIFFICULTIES[this.selectedDifficulty].name
+            );
+        }
+    }
+
+    gameLoop(currentTime) {
+        const deltaTime = currentTime - this.lastTime; this.lastTime = currentTime;
+        this.update(deltaTime); this.draw();
+        requestAnimationFrame((t) => this.gameLoop(t));
+    }
+}
+
+window.addEventListener('load', () => { new Game(); });
+    </script>
+</body>
+</html>
