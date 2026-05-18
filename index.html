@@ -487,11 +487,12 @@ class Pipe {
 class PipeManager {
     constructor(canvas) {
         this.canvas = canvas; this.pipes = []; this.lastPipeTime = 0;
-        this.difficulty = DIFFICULTIES.normal;
+        this.difficulty = DIFFICULTIES.normal; this.lastGapY = null;
     }
 
     reset(difficulty = DIFFICULTIES.normal) {
         this.pipes = []; this.lastPipeTime = 0; this.difficulty = difficulty;
+        this.lastGapY = null;
     }
 
     update(deltaTime, abilities) {
@@ -501,7 +502,24 @@ class PipeManager {
         const isFrozen = abilities.has('freeze');
         this.lastPipeTime += deltaTime;
         if (this.lastPipeTime > this.difficulty.pipeInterval && !isFrozen) {
-            this.pipes.push(new Pipe(this.canvas.width, this.canvas.height, null, this.difficulty.gapSize));
+            // Generate a reachable gap
+            let gapY;
+            const minY = 80;
+            const maxY = this.canvas.height - this.difficulty.gapSize - 80;
+
+            if (this.lastGapY === null) {
+                // First pipe: start near the middle
+                gapY = this.canvas.height / 2 - this.difficulty.gapSize / 2;
+            } else {
+                // Subsequent pipes: ensure gap is reachable
+                const maxJump = 150; // How far the bird can reasonably move vertically between pipes
+                const minGapY = Math.max(minY, this.lastGapY - maxJump);
+                const maxGapY = Math.min(maxY, this.lastGapY + maxJump);
+                gapY = Math.random() * (maxGapY - minGapY) + minGapY;
+            }
+
+            this.lastGapY = gapY;
+            this.pipes.push(new Pipe(this.canvas.width, this.canvas.height, gapY, this.difficulty.gapSize));
             this.lastPipeTime = 0;
         }
         for (let i = this.pipes.length - 1; i >= 0; i--) {
