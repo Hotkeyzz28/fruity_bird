@@ -410,7 +410,7 @@ class Bird {
 class BirdClone {
     constructor(canvas, x, y) {
         this.canvas = canvas; this.ctx = canvas.getContext('2d');
-        this.x = x - 40; this.y = y;
+        this.x = canvas.width * 0.25 - 50; this.y = y;
         this.velocity = 0; this.gravity = 0.4; this.flapStrength = -9;
         this.rotation = 0; this.size = 25;
         this.lifetime = 0; this.maxLifetime = 6000;
@@ -430,8 +430,8 @@ class BirdClone {
         const targetRotation = Math.min(Math.max(this.velocity * 3, -30), 45);
         this.rotation += (targetRotation - this.rotation) * 0.1;
 
-        // Move clone forward with pipes
-        this.x -= 0.5;
+        // Keep clone at the same x position relative to the screen
+        // (Don't move it left with pipes)
 
         // Trail
         this.trail.unshift({ x: this.x, y: this.y, alpha: 1 });
