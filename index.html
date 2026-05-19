@@ -410,29 +410,107 @@ class Bird {
 class BirdClone {
     constructor(canvas, x, y) {
         this.canvas = canvas; this.ctx = canvas.getContext('2d');
-        this.x = x; this.y = y; this.baseY = y;
-        this.time = Math.random() * Math.PI * 2; this.size = 20;
+        this.x = x - 40; this.y = y;
+        this.velocity = 0; this.gravity = 0.4; this.flapStrength = -9;
+        this.rotation = 0; this.size = 25;
         this.lifetime = 0; this.maxLifetime = 6000;
+        this.flapAnimation = 0;
+        this.trail = [];
     }
 
-    update(deltaTime, mainBirdY) {
-        this.time += deltaTime * 0.005;
-        this.y = this.baseY + Math.sin(this.time) * 30;
+    update(deltaTime, mainBirdY, mainBirdVelocity) {
+        this.flapAnimation += 0.2;
+
+        // Follow the main bird with some delay
+        const targetY = mainBirdY - 30;
+        this.y += (targetY - this.y) * 0.08;
+        this.velocity = mainBirdVelocity * 0.7;
+
+        // Smooth rotation
+        const targetRotation = Math.min(Math.max(this.velocity * 3, -30), 45);
+        this.rotation += (targetRotation - this.rotation) * 0.1;
+
+        // Move clone forward with pipes
+        this.x -= 0.5;
+
+        // Trail
+        this.trail.unshift({ x: this.x, y: this.y, alpha: 1 });
+        if (this.trail.length > 8) this.trail.pop();
+        for (let t of this.trail) t.alpha -= 0.12;
+
         this.lifetime += deltaTime;
         return this.lifetime < this.maxLifetime;
     }
 
     draw() {
         const ctx = this.ctx;
-        const alpha = 1 - (this.lifetime / this.maxLifetime);
+        const alpha = Math.max(0, 1 - (this.lifetime / this.maxLifetime)) * 0.9;
+
+        // Draw trail
+        for (let i = this.trail.length - 1; i >= 0; i--) {
+            const t = this.trail[i];
+            if (t.alpha > 0) {
+                ctx.save();
+                ctx.translate(t.x, t.y);
+                ctx.globalAlpha = t.alpha * 0.3 * alpha;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(238, 130, 238, 0.5)';
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
         ctx.save();
-        ctx.globalAlpha = alpha * 0.7;
+        ctx.globalAlpha = alpha;
         ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation * Math.PI / 180);
+
+        // Draw clone bird - purple color
+        const bodyGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 0.5);
+        bodyGradient.addColorStop(0, '#FF69B4');
+        bodyGradient.addColorStop(0.5, '#EE82EE');
+        bodyGradient.addColorStop(1, '#DA70D6');
         ctx.beginPath();
         ctx.arc(0, 0, this.size * 0.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#EE82EE';
+        ctx.fillStyle = bodyGradient;
         ctx.fill();
+        ctx.strokeStyle = '#BA55D3';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Wing
+        const wingOffset = Math.sin(this.flapAnimation) * 3;
+        ctx.fillStyle = '#FFB6C1';
+        ctx.beginPath();
+        ctx.ellipse(-this.size * 0.3, wingOffset, this.size * 0.3, this.size * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(this.size * 0.25, -this.size * 0.1, this.size * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Beak
+        ctx.fillStyle = '#FF6347';
+        ctx.beginPath();
+        ctx.moveTo(this.size * 0.35, 0);
+        ctx.lineTo(this.size * 0.6, this.size * 0.05);
+        ctx.lineTo(this.size * 0.35, this.size * 0.15);
+        ctx.closePath();
+        ctx.fill();
+
         ctx.restore();
+    }
+
+    getBounds() {
+        const half = this.size / 2;
+        return { x: this.x - half * 0.7, y: this.y - half * 0.7, width: this.size * 0.7, height: this.size * 0.7 };
     }
 }
 
@@ -959,11 +1037,27 @@ class Game {
             }
             this.abilityManager.update(deltaTime);
             for (let i = this.clones.length - 1; i >= 0; i--) {
-                if (!this.clones[i].update(deltaTime, this.bird.y)) {
+                if (!this.clones[i].update(deltaTime, this.bird.y, this.bird.velocity)) {
                     this.clones.splice(i, 1);
                 } else {
+                    // Clones can score too!
                     const cloneScore = this.pipeManager.checkScoring(this.clones[i].x);
-                    if (cloneScore > 0) this.score += cloneScore;
+                    if (cloneScore > 0) {
+                        if (abilities.shouldDoubleScore()) {
+                            this.score += cloneScore * 2;
+                        } else {
+                            this.score += cloneScore;
+                        }
+                    }
+                    // Clones can also collect fruits
+                    const cloneBounds = this.clones[i].getBounds();
+                    const cloneCollected = this.fruitManager.checkCollection(cloneBounds);
+                    if (cloneCollected) {
+                        this.abilityManager.addAbility(cloneCollected);
+                        if (cloneCollected === 'clone') {
+                            this.clones.push(new BirdClone(this.canvas, this.bird.x - 60, this.bird.y));
+                        }
+                    }
                 }
             }
             if (hitSomething) {
@@ -978,8 +1072,8 @@ class Game {
         if (this.state === GAME_STATE.PLAYING || this.state === GAME_STATE.PRACTICE) {
             this.pipeManager.draw(this.background.ctx, this.abilityManager.isFrozen());
             this.fruitManager.draw(this.background.ctx);
-            for (let clone of this.clones) clone.draw();
             this.bird.draw();
+            for (let clone of this.clones) clone.draw();
             this.ui.drawScore(this.score);
             this.ui.drawAbilityIndicators(activeAbilities);
             if (this.state === GAME_STATE.PRACTICE) this.ui.drawPracticeScreen();
