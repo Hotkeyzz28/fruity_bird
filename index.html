@@ -883,7 +883,7 @@ class Game {
     constructor() {
         this.canvas = document.getElementById('game-canvas'); this.setupCanvas();
         this.state = GAME_STATE.MENU; this.score = 0; this.highScores = this.loadHighScores();
-        this.selectedDifficulty = 'normal';
+        this.selectedDifficulty = 'normal'; this.extraLives = 0;
         this.background = new Background(this.canvas); this.bird = new Bird(this.canvas);
         this.pipeManager = new PipeManager(this.canvas); this.fruitManager = new FruitManager(this.canvas);
         this.abilityManager = new AbilityManager(); this.ui = new UI(this.canvas); this.clones = [];
@@ -981,7 +981,7 @@ class Game {
 
     startGame(isPractice) {
         this.state = isPractice ? GAME_STATE.PRACTICE : GAME_STATE.PLAYING;
-        this.score = 0; this.bird.reset();
+        this.score = 0; this.bird.reset(); this.extraLives = 0;
         this.pipeManager.reset(DIFFICULTIES[this.selectedDifficulty]);
         this.fruitManager.reset(isPractice); this.abilityManager.reset(); this.clones = [];
     }
@@ -992,7 +992,7 @@ class Game {
     }
 
     resetPractice() {
-        this.score = 0; this.bird.reset();
+        this.score = 0; this.bird.reset(); this.extraLives = 0;
         this.pipeManager.reset(DIFFICULTIES[this.selectedDifficulty]);
         this.fruitManager.reset(true); this.abilityManager.reset(); this.clones = [];
     }
@@ -1003,14 +1003,15 @@ class Game {
             const abilities = this.abilityManager; const isPractice = this.state === GAME_STATE.PRACTICE;
             this.bird.update(deltaTime, abilities);
             let hitSomething = false;
-            const hasClones = this.clones.length > 0;
+            const hasExtraLife = this.extraLives > 0;
             if (this.bird.y > this.canvas.height || this.bird.y < 0) {
                 if (this.bird.y > this.canvas.height && abilities.has('gravity')) {
                 } else if (!abilities.has('invincible')) {
                     if (isPractice) hitSomething = true;
-                    else if (hasClones) {
-                        // Lose a clone instead of dying
-                        this.clones.pop();
+                    else if (hasExtraLife) {
+                        // Lose an extra life instead of dying
+                        this.extraLives--;
+                        if (this.clones.length > 0) this.clones.pop();
                         this.bird.reset();
                     } else {
                         this.gameOver();
@@ -1025,9 +1026,10 @@ class Game {
             const birdBounds = this.bird.getBounds();
             const hitPipe = this.pipeManager.checkCollision(birdBounds, abilities.has('invincible'));
             if (hitPipe && !isPractice) {
-                if (hasClones) {
-                    // Lose a clone instead of dying
-                    this.clones.pop();
+                if (hasExtraLife) {
+                    // Lose an extra life instead of dying
+                    this.extraLives--;
+                    if (this.clones.length > 0) this.clones.pop();
                     this.bird.reset();
                 } else {
                     this.gameOver();
@@ -1045,6 +1047,7 @@ class Game {
             if (collectedType) {
                 this.abilityManager.addAbility(collectedType);
                 if (collectedType === 'clone') {
+                    this.extraLives++;
                     this.clones.push(new BirdClone(this.canvas, this.bird.x - 60, this.bird.y));
                 }
             }
@@ -1089,8 +1092,8 @@ class Game {
             for (let clone of this.clones) clone.draw();
             this.ui.drawScore(this.score);
             this.ui.drawAbilityIndicators(activeAbilities);
-            // Draw clone/lives indicator
-            if (this.clones.length > 0) {
+            // Draw extra lives indicator
+            if (this.extraLives > 0) {
                 const ctx = this.background.ctx;
                 ctx.save();
                 ctx.font = 'bold 24px Arial';
@@ -1098,7 +1101,7 @@ class Game {
                 ctx.textBaseline = 'top';
                 ctx.fillStyle = '#FFD700';
                 let livesText = '';
-                for (let i = 0; i < this.clones.length; i++) livesText += '🥝';
+                for (let i = 0; i < this.extraLives; i++) livesText += '🥝';
                 ctx.fillText(livesText, this.canvas.width - 20, 20);
                 ctx.restore();
             }
