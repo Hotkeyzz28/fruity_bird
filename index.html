@@ -413,7 +413,6 @@ class BirdClone {
         this.x = canvas.width * 0.25 - 50; this.y = y;
         this.velocity = 0; this.gravity = 0.4; this.flapStrength = -9;
         this.rotation = 0; this.size = 25;
-        this.lifetime = 0; this.maxLifetime = 6000;
         this.flapAnimation = 0;
         this.trail = [];
     }
@@ -438,13 +437,13 @@ class BirdClone {
         if (this.trail.length > 8) this.trail.pop();
         for (let t of this.trail) t.alpha -= 0.12;
 
-        this.lifetime += deltaTime;
-        return this.lifetime < this.maxLifetime;
+        // Clone stays until you use the extra life!
+        return true;
     }
 
     draw() {
         const ctx = this.ctx;
-        const alpha = Math.max(0, 1 - (this.lifetime / this.maxLifetime)) * 0.9;
+        const alpha = 0.9;
 
         // Draw trail
         for (let i = this.trail.length - 1; i >= 0; i--) {
@@ -1045,10 +1044,13 @@ class Game {
             this.fruitManager.update(deltaTime, this.bird.x, this.bird.y, abilities.has('magnet'));
             const collectedType = this.fruitManager.checkCollection(birdBounds);
             if (collectedType) {
-                this.abilityManager.addAbility(collectedType);
                 if (collectedType === 'clone') {
+                    // Clone gives permanent extra life + helper bird
                     this.extraLives++;
                     this.clones.push(new BirdClone(this.canvas, this.bird.x - 60, this.bird.y));
+                } else {
+                    // Other fruits work like before with time limits
+                    this.abilityManager.addAbility(collectedType);
                 }
             }
             this.abilityManager.update(deltaTime);
