@@ -51,8 +51,7 @@ const FRUIT_TYPES = {
     magnet: { emoji: '🍑', name: 'Magnet', duration: 4500, color: '#40E0D0', desc: 'Attract fruits automatically!' },
     shrink: { emoji: '🍒', name: 'Shrink', duration: 4000, color: '#FF6347', desc: 'Bird becomes smaller!' },
     giant: { emoji: '🍉', name: 'Giant', duration: 4000, color: '#FF4500', desc: 'Bird becomes bigger!' },
-    freeze: { emoji: '🍈', name: 'Time Freeze', duration: 2500, color: '#87CEEB', desc: 'Pipes stop moving!' },
-    clone: { emoji: '🥝', name: 'Clone', duration: 6000, color: '#EE82EE', desc: 'Clone helps you score + extra life!' }
+    freeze: { emoji: '🍈', name: 'Time Freeze', duration: 2500, color: '#87CEEB', desc: 'Pipes stop moving!' }
 };
 
 const DIFFICULTIES = {
@@ -404,112 +403,6 @@ class Bird {
         ctx.fill();
 
         ctx.restore();
-    }
-}
-
-class BirdClone {
-    constructor(canvas, x, y) {
-        this.canvas = canvas; this.ctx = canvas.getContext('2d');
-        this.x = canvas.width * 0.25 - 50; this.y = y;
-        this.velocity = 0; this.gravity = 0.4; this.flapStrength = -9;
-        this.rotation = 0; this.size = 25;
-        this.flapAnimation = 0;
-        this.trail = [];
-    }
-
-    update(deltaTime, mainBirdY, mainBirdVelocity) {
-        this.flapAnimation += 0.2;
-
-        // Follow the main bird with some delay
-        const targetY = mainBirdY - 30;
-        this.y += (targetY - this.y) * 0.08;
-        this.velocity = mainBirdVelocity * 0.7;
-
-        // Smooth rotation
-        const targetRotation = Math.min(Math.max(this.velocity * 3, -30), 45);
-        this.rotation += (targetRotation - this.rotation) * 0.1;
-
-        // Keep clone at the same x position relative to the screen
-        // (Don't move it left with pipes)
-
-        // Trail
-        this.trail.unshift({ x: this.x, y: this.y, alpha: 1 });
-        if (this.trail.length > 8) this.trail.pop();
-        for (let t of this.trail) t.alpha -= 0.12;
-
-        // Clone stays until you use the extra life!
-        return true;
-    }
-
-    draw() {
-        const ctx = this.ctx;
-        const alpha = 0.9;
-
-        // Draw trail
-        for (let i = this.trail.length - 1; i >= 0; i--) {
-            const t = this.trail[i];
-            if (t.alpha > 0) {
-                ctx.save();
-                ctx.translate(t.x, t.y);
-                ctx.globalAlpha = t.alpha * 0.3 * alpha;
-                ctx.beginPath();
-                ctx.arc(0, 0, this.size * 0.4, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(238, 130, 238, 0.5)';
-                ctx.fill();
-                ctx.restore();
-            }
-        }
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation * Math.PI / 180);
-
-        // Draw clone bird - purple color
-        const bodyGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 0.5);
-        bodyGradient.addColorStop(0, '#FF69B4');
-        bodyGradient.addColorStop(0.5, '#EE82EE');
-        bodyGradient.addColorStop(1, '#DA70D6');
-        ctx.beginPath();
-        ctx.arc(0, 0, this.size * 0.5, 0, Math.PI * 2);
-        ctx.fillStyle = bodyGradient;
-        ctx.fill();
-        ctx.strokeStyle = '#BA55D3';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Wing
-        const wingOffset = Math.sin(this.flapAnimation) * 3;
-        ctx.fillStyle = '#FFB6C1';
-        ctx.beginPath();
-        ctx.ellipse(-this.size * 0.3, wingOffset, this.size * 0.3, this.size * 0.2, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Eye
-        ctx.fillStyle = 'white';
-        ctx.beginPath();
-        ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.18, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'black';
-        ctx.beginPath();
-        ctx.arc(this.size * 0.25, -this.size * 0.1, this.size * 0.08, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Beak
-        ctx.fillStyle = '#FF6347';
-        ctx.beginPath();
-        ctx.moveTo(this.size * 0.35, 0);
-        ctx.lineTo(this.size * 0.6, this.size * 0.05);
-        ctx.lineTo(this.size * 0.35, this.size * 0.15);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.restore();
-    }
-
-    getBounds() {
-        const half = this.size / 2;
-        return { x: this.x - half * 0.7, y: this.y - half * 0.7, width: this.size * 0.7, height: this.size * 0.7 };
     }
 }
 
@@ -882,10 +775,10 @@ class Game {
     constructor() {
         this.canvas = document.getElementById('game-canvas'); this.setupCanvas();
         this.state = GAME_STATE.MENU; this.score = 0; this.highScores = this.loadHighScores();
-        this.selectedDifficulty = 'normal'; this.extraLives = 0;
+        this.selectedDifficulty = 'normal';
         this.background = new Background(this.canvas); this.bird = new Bird(this.canvas);
         this.pipeManager = new PipeManager(this.canvas); this.fruitManager = new FruitManager(this.canvas);
-        this.abilityManager = new AbilityManager(); this.ui = new UI(this.canvas); this.clones = [];
+        this.abilityManager = new AbilityManager(); this.ui = new UI(this.canvas);
         this.lastTime = 0; this.setupEventListeners(); this.gameLoop(0);
     }
 
@@ -980,9 +873,9 @@ class Game {
 
     startGame(isPractice) {
         this.state = isPractice ? GAME_STATE.PRACTICE : GAME_STATE.PLAYING;
-        this.score = 0; this.bird.reset(); this.extraLives = 0;
+        this.score = 0; this.bird.reset();
         this.pipeManager.reset(DIFFICULTIES[this.selectedDifficulty]);
-        this.fruitManager.reset(isPractice); this.abilityManager.reset(); this.clones = [];
+        this.fruitManager.reset(isPractice); this.abilityManager.reset();
     }
 
     gameOver() {
@@ -991,9 +884,9 @@ class Game {
     }
 
     resetPractice() {
-        this.score = 0; this.bird.reset(); this.extraLives = 0;
+        this.score = 0; this.bird.reset();
         this.pipeManager.reset(DIFFICULTIES[this.selectedDifficulty]);
-        this.fruitManager.reset(true); this.abilityManager.reset(); this.clones = [];
+        this.fruitManager.reset(true); this.abilityManager.reset();
     }
 
     update(deltaTime) {
@@ -1002,19 +895,11 @@ class Game {
             const abilities = this.abilityManager; const isPractice = this.state === GAME_STATE.PRACTICE;
             this.bird.update(deltaTime, abilities);
             let hitSomething = false;
-            const hasExtraLife = this.extraLives > 0;
             if (this.bird.y > this.canvas.height || this.bird.y < 0) {
                 if (this.bird.y > this.canvas.height && abilities.has('gravity')) {
                 } else if (!abilities.has('invincible')) {
                     if (isPractice) hitSomething = true;
-                    else if (hasExtraLife) {
-                        // Lose an extra life instead of dying
-                        this.extraLives--;
-                        if (this.clones.length > 0) this.clones.pop();
-                        this.bird.reset();
-                    } else {
-                        this.gameOver();
-                    }
+                    else this.gameOver();
                 } else if (isPractice && abilities.has('invincible')) {
                     if (this.bird.y > this.canvas.height) this.bird.y = this.canvas.height - 30;
                     if (this.bird.y < 0) this.bird.y = 30;
@@ -1025,14 +910,7 @@ class Game {
             const birdBounds = this.bird.getBounds();
             const hitPipe = this.pipeManager.checkCollision(birdBounds, abilities.has('invincible'));
             if (hitPipe && !isPractice) {
-                if (hasExtraLife) {
-                    // Lose an extra life instead of dying
-                    this.extraLives--;
-                    if (this.clones.length > 0) this.clones.pop();
-                    this.bird.reset();
-                } else {
-                    this.gameOver();
-                }
+                this.gameOver();
             } else if (hitPipe && isPractice) {
                 hitSomething = true;
             }
@@ -1044,40 +922,9 @@ class Game {
             this.fruitManager.update(deltaTime, this.bird.x, this.bird.y, abilities.has('magnet'));
             const collectedType = this.fruitManager.checkCollection(birdBounds);
             if (collectedType) {
-                if (collectedType === 'clone') {
-                    // Clone gives permanent extra life + helper bird
-                    this.extraLives++;
-                    this.clones.push(new BirdClone(this.canvas, this.bird.x - 60, this.bird.y));
-                } else {
-                    // Other fruits work like before with time limits
-                    this.abilityManager.addAbility(collectedType);
-                }
+                this.abilityManager.addAbility(collectedType);
             }
             this.abilityManager.update(deltaTime);
-            for (let i = this.clones.length - 1; i >= 0; i--) {
-                if (!this.clones[i].update(deltaTime, this.bird.y, this.bird.velocity)) {
-                    this.clones.splice(i, 1);
-                } else {
-                    // Clones can score too!
-                    const cloneScore = this.pipeManager.checkScoring(this.clones[i].x);
-                    if (cloneScore > 0) {
-                        if (abilities.shouldDoubleScore()) {
-                            this.score += cloneScore * 2;
-                        } else {
-                            this.score += cloneScore;
-                        }
-                    }
-                    // Clones can also collect fruits
-                    const cloneBounds = this.clones[i].getBounds();
-                    const cloneCollected = this.fruitManager.checkCollection(cloneBounds);
-                    if (cloneCollected) {
-                        this.abilityManager.addAbility(cloneCollected);
-                        if (cloneCollected === 'clone') {
-                            this.clones.push(new BirdClone(this.canvas, this.bird.x - 60, this.bird.y));
-                        }
-                    }
-                }
-            }
             if (hitSomething) {
                 this.resetPractice();
             }
@@ -1091,22 +938,8 @@ class Game {
             this.pipeManager.draw(this.background.ctx, this.abilityManager.isFrozen());
             this.fruitManager.draw(this.background.ctx);
             this.bird.draw();
-            for (let clone of this.clones) clone.draw();
             this.ui.drawScore(this.score);
             this.ui.drawAbilityIndicators(activeAbilities);
-            // Draw extra lives indicator
-            if (this.extraLives > 0) {
-                const ctx = this.background.ctx;
-                ctx.save();
-                ctx.font = 'bold 24px Arial';
-                ctx.textAlign = 'right';
-                ctx.textBaseline = 'top';
-                ctx.fillStyle = '#FFD700';
-                let livesText = '';
-                for (let i = 0; i < this.extraLives; i++) livesText += '🥝';
-                ctx.fillText(livesText, this.canvas.width - 20, 20);
-                ctx.restore();
-            }
             if (this.state === GAME_STATE.PRACTICE) this.ui.drawPracticeScreen();
         } else if (this.state === GAME_STATE.MENU) {
             this.ui.drawMenuScreen(this.selectedDifficulty, this.highScores);
