@@ -52,7 +52,7 @@ const FRUIT_TYPES = {
     shrink: { emoji: '🍒', name: 'Shrink', duration: 4000, color: '#FF6347', desc: 'Bird becomes smaller!' },
     giant: { emoji: '🍉', name: 'Giant', duration: 4000, color: '#FF4500', desc: 'Bird becomes bigger!' },
     freeze: { emoji: '🍈', name: 'Time Freeze', duration: 2500, color: '#87CEEB', desc: 'Pipes stop moving!' },
-    clone: { emoji: '🥝', name: 'Clone', duration: 6000, color: '#EE82EE', desc: 'Clone helps you score!' }
+    clone: { emoji: '🥝', name: 'Clone', duration: 6000, color: '#EE82EE', desc: 'Clone helps you score + extra life!' }
 };
 
 const DIFFICULTIES = {
@@ -1003,11 +1003,18 @@ class Game {
             const abilities = this.abilityManager; const isPractice = this.state === GAME_STATE.PRACTICE;
             this.bird.update(deltaTime, abilities);
             let hitSomething = false;
+            const hasClones = this.clones.length > 0;
             if (this.bird.y > this.canvas.height || this.bird.y < 0) {
                 if (this.bird.y > this.canvas.height && abilities.has('gravity')) {
                 } else if (!abilities.has('invincible')) {
                     if (isPractice) hitSomething = true;
-                    else this.gameOver();
+                    else if (hasClones) {
+                        // Lose a clone instead of dying
+                        this.clones.pop();
+                        this.bird.reset();
+                    } else {
+                        this.gameOver();
+                    }
                 } else if (isPractice && abilities.has('invincible')) {
                     if (this.bird.y > this.canvas.height) this.bird.y = this.canvas.height - 30;
                     if (this.bird.y < 0) this.bird.y = 30;
@@ -1018,7 +1025,13 @@ class Game {
             const birdBounds = this.bird.getBounds();
             const hitPipe = this.pipeManager.checkCollision(birdBounds, abilities.has('invincible'));
             if (hitPipe && !isPractice) {
-                this.gameOver();
+                if (hasClones) {
+                    // Lose a clone instead of dying
+                    this.clones.pop();
+                    this.bird.reset();
+                } else {
+                    this.gameOver();
+                }
             } else if (hitPipe && isPractice) {
                 hitSomething = true;
             }
@@ -1076,6 +1089,19 @@ class Game {
             for (let clone of this.clones) clone.draw();
             this.ui.drawScore(this.score);
             this.ui.drawAbilityIndicators(activeAbilities);
+            // Draw clone/lives indicator
+            if (this.clones.length > 0) {
+                const ctx = this.background.ctx;
+                ctx.save();
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = '#FFD700';
+                let livesText = '';
+                for (let i = 0; i < this.clones.length; i++) livesText += '🥝';
+                ctx.fillText(livesText, this.canvas.width - 20, 20);
+                ctx.restore();
+            }
             if (this.state === GAME_STATE.PRACTICE) this.ui.drawPracticeScreen();
         } else if (this.state === GAME_STATE.MENU) {
             this.ui.drawMenuScreen(this.selectedDifficulty, this.highScores);
